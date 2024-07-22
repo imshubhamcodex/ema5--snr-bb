@@ -1,0 +1,115 @@
+//@version=5
+indicator("EMA5 with SnR-BB", overlay=true)
+
+// Bollinger Bands settings
+lengthBB = input.int(20, title="BB Length")
+srcBB = input(close, title="BB Source")
+multBB = input.float(2.0, title="BB Multiplier")
+
+// Calculate Bollinger Bands
+basis = ta.sma(srcBB, lengthBB)
+dev = multBB * ta.stdev(srcBB, lengthBB)
+upperBB = basis + dev
+lowerBB = basis - dev
+
+// User input for lookback period
+user_lookback = input.int(0, title="Custom Lookback Period (0 to use default)")
+
+// Determine default lookback period based on the chart's timeframe
+default_lookback = switch
+    timeframe.period == "15" => 125
+    timeframe.period == "5"  => 225
+    timeframe.period == "3"  => 275
+    timeframe.period == "1"  => 350
+    => 75
+
+// Use user-defined lookback if provided, otherwise use the default
+lookback = user_lookback > 0 ? user_lookback : default_lookback
+
+// Find highest high and lowest low over the lookback period
+support = ta.lowest(low, lookback)
+resistance = ta.highest(high, lookback)
+
+// Line variables for support and resistance
+var line[] supportLines = na
+var line[] resistanceLines = na
+
+if na(supportLines)
+    supportLines := array.new_line(0)
+if na(resistanceLines)
+    resistanceLines := array.new_line(0)
+
+// Draw support and resistance lines
+if (bar_index >= lookback)
+    line_support = line.new(x1=bar_index - lookback, y1=support, x2=bar_index, y2=support, color=color.green, width=2)
+    line_resistance = line.new(x1=bar_index - lookback, y1=resistance, x2=bar_index, y2=resistance, color=color.red, width=2)
+    
+    array.push(supportLines, line_support)
+    array.push(resistanceLines, line_resistance)
+
+    // Remove the oldest lines to maintain array size
+    if array.size(supportLines) > lookback
+        line.delete(array.shift(supportLines))
+    if array.size(resistanceLines) > lookback
+        line.delete(array.shift(resistanceLines))
+
+// Plot Bollinger Bands
+plot(basis, color=color.purple, title="BB Basis")
+p1 = plot(upperBB, color=color.red, title="Upper BB")
+p2 = plot(lowerBB, color=color.red, title="Lower BB")
+fill(p1, p2, color=color.rgb(255, 0, 0, 90))
+
+
+// Calculate EMA
+lengthEMA = input.int(5, title="EMA Length", minval=1)
+ema5 = ta.ema(close, lengthEMA)
+
+// Plot EMA
+plot(ema5, color=color.blue, title="EMA 5")
+
+// Check conditions for marking candles
+ema_above = open > ema5 and low > ema5
+ema_below = open < ema5 and high < ema5
+
+// Initialize variables to track marked candles
+var bool marked_l = na
+var float marked_low = na
+var bool marked_h = na
+var float marked_high = na
+
+// Check if previous candle meets marking conditions
+if ema_above[1]
+    marked_l := true
+    marked_low := low[1]
+else
+    marked_l := na
+    marked_low := na
+
+if ema_below[1]
+    marked_h := true
+    marked_high := high[1]
+else
+    marked_h := na
+    marked_high := na
+
+if marked_l
+    // Check if the low of the next candle is lower
+    if low < marked_low
+        marked_l := true
+        marked_low := low
+    else
+        marked_l := na
+        marked_low := na
+
+if marked_h
+    // Check if the low of the next candle is lower
+    if high > marked_high
+        marked_h := true
+        marked_high := high
+    else
+        marked_h := na
+        marked_high := na
+
+// Mark candles with shapes
+plotshape(series=marked_l, location=location.abovebar, color=color.red, style=shape.triangledown, title="Marked Low Candle")
+plotshape(series=marked_h, location=location.belowbar, color=color.green, style=shape.triangleup, title="Marked High Candle")
